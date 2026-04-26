@@ -1,5 +1,3 @@
-version: "3.8"
-
 # ─────────────────────────────────────────────────────────────────────────────
 #  Insurance Claims Lakehouse — local Docker stack
 #  Services: MinIO · Postgres · Airflow (init + webserver + scheduler)
@@ -42,31 +40,28 @@ services:
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
+    # MinIO's distroless image has no curl/wget — health is implicit via minio-init retry
     networks:
       - lakehouse
     restart: unless-stopped
 
-  # Creates default buckets on first boot
+  # Creates default buckets on first boot; retries until MinIO accepts connections
   minio-init:
     image: minio/mc:latest
     container_name: minio-init
     depends_on:
-      minio:
-        condition: service_healthy
+      - minio
     entrypoint: >
       /bin/sh -c "
-        mc alias set local http://minio:9000 minioadmin minioadmin123;
+        until mc alias set local http://minio:9000 minioadmin minioadmin123 2>/dev/null; do
+          echo 'MinIO not ready yet — retrying in 3s...'; sleep 3;
+        done;
         mc mb --ignore-existing local/raw;
         mc mb --ignore-existing local/bronze;
         mc mb --ignore-existing local/silver;
         mc mb --ignore-existing local/gold;
         mc mb --ignore-existing local/quarantine;
-        echo 'Buckets created.';
+        echo 'All buckets ready.';
       "
     networks:
       - lakehouse
