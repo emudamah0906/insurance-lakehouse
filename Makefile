@@ -27,7 +27,7 @@ status:
 # ── Local Python dev ──────────────────────────────────────────────────────────
 
 setup-venv:
-	python3.11 -m venv .venv
+	python3 -m venv .venv
 	.venv/bin/pip install --upgrade pip
 	.venv/bin/pip install -r requirements-dev.txt
 	@echo "Activate with: source .venv/bin/activate"
