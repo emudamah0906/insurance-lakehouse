@@ -8,7 +8,7 @@
 [![Apache Airflow](https://img.shields.io/badge/Apache%20Airflow-2.9.3-017CEE.svg)](https://airflow.apache.org/)
 [![dbt](https://img.shields.io/badge/dbt-1.8.5-FF694B.svg)](https://www.getdbt.com/)
 
-A **production-style, end-to-end Insurance Claims Lakehouse** built entirely on a local Docker stack — no paid cloud services required. Demonstrates a complete data engineering pipeline from synthetic data generation to a Metabase BI dashboard, covering the full medallion architecture.
+A production-style,end-to-end Insurance Claims Lakehouse built entirely on a local Docker stack, no paid cloud services required. Demonstrates a complete data engineering pipeline from synthetic data generation to a Metabase BI dashboard, covering the full medallion architecture.
 
 ---
 
