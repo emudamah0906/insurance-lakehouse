@@ -1,13 +1,48 @@
 FROM apache/airflow:2.9.3
 
+# ── System layer: Java (required by PySpark) ──────────────────────────────────
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-17-jre-headless \
-    curl \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       openjdk-17-jre-headless \
+       curl \
+       procps \
+       pkg-config \
+       libxmlsec1-dev \
+       libxml2-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    # Create a stable JAVA_HOME symlink that works on both arm64 and amd64
+    && ln -sf \
+       "$(find /usr/lib/jvm -maxdepth 1 -type d -name 'java-17-openjdk*' | head -1)" \
+       /usr/lib/jvm/java-17-default
 
+ENV JAVA_HOME=/usr/lib/jvm/java-17-default
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+# ── Python packages ───────────────────────────────────────────────────────────
 USER airflow
-COPY airflow/requirements.txt /requirements.txt
-RUN pip install --no-cache-dir -r /requirements.txt
+
+RUN pip install --no-cache-dir \
+    faker==25.0.0 \
+    numpy==1.26.4 \
+    pandas==2.2.2 \
+    boto3==1.34.101 \
+    pyspark==3.5.1 \
+    delta-spark==3.2.0
+
+# ── Bake Delta Lake + S3 JARs into PySpark's jars dir ─────────────────────────
+# Avoids Maven Central downloads at pipeline runtime.
+RUN set -e \
+    && SPARK_JARS=$(python3 -c \
+       "import pyspark, os; print(os.path.join(os.path.dirname(pyspark.__file__), 'jars'))") \
+    && BASE=https://repo1.maven.org/maven2 \
+    && curl -fsSL "${BASE}/io/delta/delta-spark_2.12/3.2.0/delta-spark_2.12-3.2.0.jar" \
+         -o "${SPARK_JARS}/delta-spark_2.12-3.2.0.jar" \
+    && curl -fsSL "${BASE}/io/delta/delta-storage/3.2.0/delta-storage-3.2.0.jar" \
+         -o "${SPARK_JARS}/delta-storage-3.2.0.jar" \
+    && curl -fsSL "${BASE}/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar" \
+         -o "${SPARK_JARS}/hadoop-aws-3.3.4.jar" \
+    && curl -fsSL "${BASE}/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar" \
+         -o "${SPARK_JARS}/aws-java-sdk-bundle-1.12.262.jar"

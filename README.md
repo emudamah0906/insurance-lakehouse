@@ -117,7 +117,7 @@ insurance-lakehouse/
 | 0 | Discovery & setup | ✅ |
 | 1 | Repo foundation | ✅ |
 | 2 | Synthetic data generator + raw landing | ✅ |
-| 3 | Bronze + Silver (PySpark + SCD2) | 🔲 |
+| 3 | Bronze + Silver (PySpark + SCD2) | ✅ |
 | 4 | Data quality (Great Expectations) | 🔲 |
 | 5 | Gold marts in Snowflake via dbt | 🔲 |
 | 6 | Apache Iceberg demo table | 🔲 |
