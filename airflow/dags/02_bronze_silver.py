@@ -1,8 +1,8 @@
 """
-DAG 02 — Bronze and Silver layer transformation.
+DAG 02 — Bronze → DQ → Silver layer transformation.
 
 Task graph:
-  bronze_ingest → silver_transform
+  bronze_ingest → dq_check → silver_transform
 
 Features:
   - 2-hour SLA on the full DAG
@@ -18,6 +18,7 @@ from airflow.operators.python import PythonOperator
 
 sys.path.insert(0, "/opt/airflow")
 from spark_jobs.bronze_ingest import run_bronze      # noqa: E402
+from spark_jobs.dq_check import run_dq               # noqa: E402
 from spark_jobs.silver_transform import run_silver   # noqa: E402
 
 
@@ -74,17 +75,23 @@ with DAG(
     catchup=False,
     default_args=default_args,
     sla_miss_callback=_slack_failure,
-    tags=["bronze", "silver", "spark", "phase-3"],
+    tags=["bronze", "silver", "dq", "spark", "phase-4"],
     doc_md="""
 ## 02_bronze_silver
 
 Reads raw CSV/JSON from MinIO, writes schema-enforced Delta tables to Bronze,
-then cleans and transforms Bronze → Silver.
+validates quality with Great Expectations, quarantines bad rows, then promotes
+clean data to Silver.
 
 ### Bronze
 - Schema enforcement (raw string dates preserved for DQ filtering)
 - Partition: `_ingest_date`
 - Idempotent via `replaceWhere`
+
+### DQ Check
+- Great Expectations V3 validation suite per entity (HTML data docs)
+- PySpark quarantine: bad rows → `s3a://quarantine/{entity}/dt=YYYY-MM-DD`
+- `_dq_failure_reason` column records which rule(s) failed
 
 ### Silver
 - Deduplication on primary key
@@ -105,6 +112,14 @@ then cleans and transforms Bronze → Silver.
         sla=timedelta(hours=1),
     )
 
+    dq_task = PythonOperator(
+        task_id="dq_check",
+        python_callable=run_dq,
+        op_kwargs={"ingest_date": "{{ ds }}"},
+        execution_timeout=timedelta(minutes=30),
+        sla=timedelta(hours=1, minutes=30),
+    )
+
     silver_task = PythonOperator(
         task_id="silver_transform",
         python_callable=run_silver,
@@ -113,4 +128,4 @@ then cleans and transforms Bronze → Silver.
         sla=timedelta(hours=2),
     )
 
-    bronze_task >> silver_task
+    bronze_task >> dq_task >> silver_task

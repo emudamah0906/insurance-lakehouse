@@ -58,6 +58,8 @@ dbt/.user.yml
 
 # Great Expectations
 great_expectations/uncommitted/
+great_expectations/data_docs/
+great_expectations/expectations/.ge_store_backend_id
 
 # Terraform
 terraform/.terraform/
