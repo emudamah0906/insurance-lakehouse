@@ -12,6 +12,7 @@ Usage:
   Airflow PythonOperator:  run_snowflake_load(ingest_date="2024-01-15")
   Standalone:              python spark_jobs/snowflake_load.py [--date YYYY-MM-DD]
 """
+
 import argparse
 import logging
 import os
@@ -19,10 +20,10 @@ import sys
 import warnings
 from datetime import date
 
-warnings.filterwarnings("ignore", category=UserWarning)
-
 import snowflake.connector
 from snowflake.connector.pandas_tools import write_pandas
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 sys.path.insert(0, "/opt/airflow")
 from spark_jobs.utils import SILVER_BASE, get_spark  # noqa: E402
@@ -30,6 +31,7 @@ from spark_jobs.utils import SILVER_BASE, get_spark  # noqa: E402
 logger = logging.getLogger(__name__)
 
 # ── Snowflake connection config (from environment) ────────────────────────────
+
 
 def _sf_conn():
     return snowflake.connector.connect(
@@ -109,17 +111,17 @@ def _ensure_tables(conn):
 
 # ── Per-entity load ───────────────────────────────────────────────────────────
 
+
 def _load_entity(spark, conn, entity: str, ingest_date: str) -> int:
     """Read Silver Delta for entity, upsert to Snowflake STAGING."""
     # Policies use SCD2 path
-    silver_path = (f"{SILVER_BASE}/policies_scd2"
-                   if entity == "policies"
-                   else f"{SILVER_BASE}/{entity}")
+    silver_path = (
+        f"{SILVER_BASE}/policies_scd2" if entity == "policies" else f"{SILVER_BASE}/{entity}"
+    )
 
     if entity == "policies":
         # SCD2 — only load current rows to keep STAGING simple
-        df = (spark.read.format("delta").load(silver_path)
-              .filter("is_current = true"))
+        df = spark.read.format("delta").load(silver_path).filter("is_current = true")
     else:
         df = spark.read.format("delta").load(silver_path)
 
@@ -152,6 +154,7 @@ def _load_entity(spark, conn, entity: str, ingest_date: str) -> int:
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
+
 
 def run_snowflake_load(ingest_date: str | None = None) -> dict:
     """

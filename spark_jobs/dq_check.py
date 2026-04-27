@@ -11,16 +11,18 @@ Usage:
   Called by Airflow PythonOperator:  run_dq(ingest_date="2024-01-15")
   Standalone:                        python spark_jobs/dq_check.py [--date YYYY-MM-DD]
 """
+
 import argparse
 import logging
 import sys
 from datetime import date
 
-import great_expectations as gx
-from great_expectations.core.batch import RuntimeBatchRequest
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, concat_ws, lit, to_date, when
 from pyspark.sql.types import DateType
+
+import great_expectations as gx
+from great_expectations.core.batch import RuntimeBatchRequest
 
 sys.path.insert(0, "/opt/airflow")
 from spark_jobs.utils import (  # noqa: E402
@@ -35,6 +37,7 @@ GE_CONTEXT_ROOT = "/opt/airflow/great_expectations"
 
 
 # ── Great Expectations helpers ────────────────────────────────────────────────
+
 
 def _get_ge_context():
     return gx.get_context(context_root_dir=GE_CONTEXT_ROOT)
@@ -137,14 +140,13 @@ def _run_ge_validation(entity: str, pandas_df, ingest_date: str) -> bool:
 
 # ── PySpark quarantine logic ──────────────────────────────────────────────────
 
+
 def _split_by_rules(df: DataFrame, rules: list[tuple]) -> tuple[DataFrame, DataFrame]:
     """
     rules: list of (column_expression, failure_label) tuples.
     Returns (clean_df, dirty_df). dirty_df has _dq_failure_reason column.
     """
-    failure_exprs = [
-        when(cond, lit(label)) for cond, label in rules
-    ]
+    failure_exprs = [when(cond, lit(label)) for cond, label in rules]
     reason_col = concat_ws("|", *failure_exprs)
     labeled = df.withColumn("_dq_failure_reason", reason_col)
     dirty = labeled.filter(col("_dq_failure_reason") != "")
@@ -157,8 +159,8 @@ def _quarantine_customers(df: DataFrame):
         (col("customer_id").isNull(), "null_customer_id"),
         (col("province").isNull(), "null_province"),
         (
-            col("postal_code").isNull() |
-            ~col("postal_code").rlike(r"^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$"),
+            col("postal_code").isNull()
+            | ~col("postal_code").rlike(r"^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$"),
             "invalid_postal_code",
         ),
     ]
@@ -169,7 +171,10 @@ def _quarantine_policies(df: DataFrame):
     rules = [
         (col("policy_id").isNull(), "null_policy_id"),
         (col("customer_id").isNull(), "null_customer_id"),
-        (col("coverage_amount").isNull() | (col("coverage_amount") <= 0), "invalid_coverage_amount"),
+        (
+            col("coverage_amount").isNull() | (col("coverage_amount") <= 0),
+            "invalid_coverage_amount",
+        ),
         (col("premium").isNull() | (col("premium") <= 0), "invalid_premium"),
     ]
     return _split_by_rules(df, rules)
@@ -181,9 +186,9 @@ def _quarantine_claims(df: DataFrame):
         (col("policy_id").isNull(), "null_policy_id"),
         (col("claim_amount").isNull() | (col("claim_amount") <= 0), "invalid_claim_amount"),
         (
-            to_date(col("loss_date")).isNotNull() &
-            to_date(col("claim_date")).isNotNull() &
-            (to_date(col("loss_date")) > to_date(col("claim_date"))),
+            to_date(col("loss_date")).isNotNull()
+            & to_date(col("claim_date")).isNotNull()
+            & (to_date(col("loss_date")) > to_date(col("claim_date"))),
             "loss_date_after_claim_date",
         ),
     ]
@@ -198,19 +203,20 @@ def _write_quarantine(dirty_df: DataFrame, entity: str, ingest_date: str) -> int
         logger.info(f"[dq] no quarantine rows for {entity}")
         return 0
     path = f"{QUARANTINE_BASE}/{entity}"
-    (dirty_df
-     .withColumn("_ingest_date", lit(ingest_date).cast(DateType()))
-     .write
-     .format("delta")
-     .mode("overwrite")
-     .option("replaceWhere", f"_ingest_date = '{ingest_date}'")
-     .partitionBy("_ingest_date")
-     .save(path))
+    (
+        dirty_df.withColumn("_ingest_date", lit(ingest_date).cast(DateType()))
+        .write.format("delta")
+        .mode("overwrite")
+        .option("replaceWhere", f"_ingest_date = '{ingest_date}'")
+        .partitionBy("_ingest_date")
+        .save(path)
+    )
     logger.info(f"[dq] quarantined {count:,} rows → {path}")
     return count
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
+
 
 def run_dq(ingest_date: str | None = None) -> dict:
     """
@@ -228,16 +234,15 @@ def run_dq(ingest_date: str | None = None) -> dict:
     try:
         for entity, quarantine_fn in [
             ("customers", _quarantine_customers),
-            ("policies",  _quarantine_policies),
-            ("claims",    _quarantine_claims),
+            ("policies", _quarantine_policies),
+            ("claims", _quarantine_claims),
         ]:
             bronze_path = f"{BRONZE_BASE}/{entity}"
             logger.info(f"[dq] reading bronze {bronze_path} partition dt={run_date}")
 
-            spark_df = (spark.read
-                        .format("delta")
-                        .load(bronze_path)
-                        .filter(col("_ingest_date") == run_date))
+            spark_df = (
+                spark.read.format("delta").load(bronze_path).filter(col("_ingest_date") == run_date)
+            )
 
             pandas_df = spark_df.toPandas()
             logger.info(f"[dq] {entity}: {len(pandas_df):,} rows loaded for GE")
@@ -247,10 +252,10 @@ def run_dq(ingest_date: str | None = None) -> dict:
             q_count = _write_quarantine(dirty_df, entity, run_date)
 
             results[entity] = {
-                "ge_passed":       ge_passed,
-                "total_rows":      len(pandas_df),
+                "ge_passed": ge_passed,
+                "total_rows": len(pandas_df),
                 "quarantine_rows": q_count,
-                "clean_rows":      len(pandas_df) - q_count,
+                "clean_rows": len(pandas_df) - q_count,
             }
 
         logger.info(f"=== dq_check complete: {results} ===")
@@ -263,7 +268,8 @@ def run_dq(ingest_date: str | None = None) -> dict:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(message)s")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date", default=date.today().isoformat(),
-                        help="Ingest date YYYY-MM-DD (default: today)")
+    parser.add_argument(
+        "--date", default=date.today().isoformat(), help="Ingest date YYYY-MM-DD (default: today)"
+    )
     args = parser.parse_args()
     print(run_dq(args.date))

@@ -22,13 +22,14 @@ Usage:
   Called by Airflow PythonOperator:  run_silver(ingest_date="2024-01-15")
   Standalone:                        python spark_jobs/silver_transform.py [--date YYYY-MM-DD]
 """
+
 import argparse
 import logging
 import sys
 from datetime import date
 
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, current_date, lit, to_date, to_timestamp
+from pyspark.sql.functions import col, current_date, lit, to_date
 from pyspark.sql.types import DateType
 
 sys.path.insert(0, "/opt/airflow")
@@ -44,34 +45,39 @@ FAR_FUTURE_DATE = "9999-12-31"  # cast to DateType() inside functions (needs act
 
 # ── Bronze → Silver: type casting & cleanup ───────────────────────────────────
 
+
 def _clean_customers(df: DataFrame) -> DataFrame:
-    return (df
-            .dropDuplicates(["customer_id"])
-            .filter(col("customer_id").isNotNull())
-            .withColumn("dob",        to_date("dob",        "yyyy-MM-dd"))
-            .withColumn("created_at", to_date("created_at", "yyyy-MM-dd"))
-            .drop("_source_file", "_ingest_date"))
+    return (
+        df.dropDuplicates(["customer_id"])
+        .filter(col("customer_id").isNotNull())
+        .withColumn("dob", to_date("dob", "yyyy-MM-dd"))
+        .withColumn("created_at", to_date("created_at", "yyyy-MM-dd"))
+        .drop("_source_file", "_ingest_date")
+    )
 
 
 def _clean_claims(df: DataFrame) -> DataFrame:
-    return (df
-            .dropDuplicates(["claim_id"])
-            .filter(col("claim_id").isNotNull())
-            .withColumn("claim_date", to_date("claim_date", "yyyy-MM-dd"))
-            .withColumn("loss_date",  to_date("loss_date",  "yyyy-MM-dd"))
-            .drop("_source_file", "_ingest_date"))
+    return (
+        df.dropDuplicates(["claim_id"])
+        .filter(col("claim_id").isNotNull())
+        .withColumn("claim_date", to_date("claim_date", "yyyy-MM-dd"))
+        .withColumn("loss_date", to_date("loss_date", "yyyy-MM-dd"))
+        .drop("_source_file", "_ingest_date")
+    )
 
 
 def _clean_policies(df: DataFrame) -> DataFrame:
-    return (df
-            .dropDuplicates(["policy_id"])
-            .filter(col("policy_id").isNotNull())
-            .withColumn("start_date", to_date("start_date", "yyyy-MM-dd"))
-            .withColumn("end_date",   to_date("end_date",   "yyyy-MM-dd"))
-            .drop("_source_file", "_ingest_date"))
+    return (
+        df.dropDuplicates(["policy_id"])
+        .filter(col("policy_id").isNotNull())
+        .withColumn("start_date", to_date("start_date", "yyyy-MM-dd"))
+        .withColumn("end_date", to_date("end_date", "yyyy-MM-dd"))
+        .drop("_source_file", "_ingest_date")
+    )
 
 
 # ── Upsert (MERGE) for customers and claims ───────────────────────────────────
+
 
 def _upsert_silver(spark: SparkSession, source: DataFrame, path: str, pk: str):
     """
@@ -84,11 +90,13 @@ def _upsert_silver(spark: SparkSession, source: DataFrame, path: str, pk: str):
 
     if DeltaTable.isDeltaTable(spark, path):
         target = DeltaTable.forPath(spark, path)
-        (target.alias("tgt")
-         .merge(source.alias("src"), f"tgt.{pk} = src.{pk}")
-         .whenMatchedUpdateAll()
-         .whenNotMatchedInsertAll()
-         .execute())
+        (
+            target.alias("tgt")
+            .merge(source.alias("src"), f"tgt.{pk} = src.{pk}")
+            .whenMatchedUpdateAll()
+            .whenNotMatchedInsertAll()
+            .execute()
+        )
         logger.info(f"[silver] MERGE upsert → {path}")
     else:
         source.write.format("delta").mode("overwrite").save(path)
@@ -96,6 +104,7 @@ def _upsert_silver(spark: SparkSession, source: DataFrame, path: str, pk: str):
 
 
 # ── SCD Type 2 for policies ───────────────────────────────────────────────────
+
 
 def _apply_scd2_policies(spark: SparkSession, source: DataFrame, path: str):
     """
@@ -109,36 +118,36 @@ def _apply_scd2_policies(spark: SparkSession, source: DataFrame, path: str):
 
     if not DeltaTable.isDeltaTable(spark, path):
         # ── First load ──────────────────────────────────────────────────────
-        (source
-         .withColumn("effective_start", current_date())
-         .withColumn("effective_end",   lit(FAR_FUTURE_DATE).cast(DateType()))
-         .withColumn("is_current",      lit(True))
-         .write
-         .format("delta")
-         .mode("overwrite")
-         .save(path))
+        (
+            source.withColumn("effective_start", current_date())
+            .withColumn("effective_end", lit(FAR_FUTURE_DATE).cast(DateType()))
+            .withColumn("is_current", lit(True))
+            .write.format("delta")
+            .mode("overwrite")
+            .save(path)
+        )
         logger.info(f"[silver] SCD2 initial load → {path}")
         return
 
     target_dt = DeltaTable.forPath(spark, path)
-    current_silver = target_dt.toDF().filter(col("is_current") == True)
+    current_silver = target_dt.toDF().filter(col("is_current"))
 
     # ── Detect CHANGED records ──────────────────────────────────────────────
     # Join source to current Silver on policy_id; filter where any tracked
     # column differs. NULLs handled with eqNullSafe (<=>).
-    change_filter = " OR ".join([
-        f"NOT (src.{c} <=> tgt.{c})" for c in SCD2_TRACKED_COLS
-    ])
+    change_filter = " OR ".join([f"NOT (src.{c} <=> tgt.{c})" for c in SCD2_TRACKED_COLS])
 
-    changed = (source.alias("src")
-               .join(current_silver.alias("tgt"), "policy_id")
-               .filter(change_filter)
-               .select("src.*"))
+    changed = (
+        source.alias("src")
+        .join(current_silver.alias("tgt"), "policy_id")
+        .filter(change_filter)
+        .select("src.*")
+    )
 
     # ── Detect NEW records (not in Silver at all) ───────────────────────────
-    new_records = (source.alias("src")
-                   .join(target_dt.toDF().select("policy_id").distinct(),
-                         "policy_id", "left_anti"))
+    new_records = source.alias("src").join(
+        target_dt.toDF().select("policy_id").distinct(), "policy_id", "left_anti"
+    )
 
     rows_to_insert = changed.union(new_records)
     insert_count = rows_to_insert.count()
@@ -150,31 +159,36 @@ def _apply_scd2_policies(spark: SparkSession, source: DataFrame, path: str):
     logger.info(f"[silver] SCD2: {insert_count:,} rows to close/insert")
 
     # ── Step 1: Close changed records ──────────────────────────────────────
-    (target_dt.alias("tgt")
-     .merge(
-         changed.select(col("policy_id").alias("src_policy_id")).alias("src"),
-         "tgt.policy_id = src.src_policy_id AND tgt.is_current = true"
-     )
-     .whenMatchedUpdate(set={
-         "is_current":    lit(False),
-         "effective_end": current_date(),
-     })
-     .execute())
+    (
+        target_dt.alias("tgt")
+        .merge(
+            changed.select(col("policy_id").alias("src_policy_id")).alias("src"),
+            "tgt.policy_id = src.src_policy_id AND tgt.is_current = true",
+        )
+        .whenMatchedUpdate(
+            set={
+                "is_current": lit(False),
+                "effective_end": current_date(),
+            }
+        )
+        .execute()
+    )
 
     # ── Step 2: Append new current versions ────────────────────────────────
-    (rows_to_insert
-     .withColumn("effective_start", current_date())
-     .withColumn("effective_end",   lit(FAR_FUTURE_DATE).cast(DateType()))
-     .withColumn("is_current",      lit(True))
-     .write
-     .format("delta")
-     .mode("append")
-     .save(path))
+    (
+        rows_to_insert.withColumn("effective_start", current_date())
+        .withColumn("effective_end", lit(FAR_FUTURE_DATE).cast(DateType()))
+        .withColumn("is_current", lit(True))
+        .write.format("delta")
+        .mode("append")
+        .save(path)
+    )
 
     logger.info(f"[silver] SCD2 complete → {path}")
 
 
 # ── Orchestration entry point ─────────────────────────────────────────────────
+
 
 def run_silver(ingest_date: str | None = None) -> dict:
     """
@@ -189,37 +203,40 @@ def run_silver(ingest_date: str | None = None) -> dict:
 
     try:
         # ── Read from Bronze (today's partition only) ───────────────────────
-        bronze_customers = (spark.read.format("delta")
-                            .load(f"{BRONZE_BASE}/customers")
-                            .filter(col("_ingest_date") == run_date))
+        bronze_customers = (
+            spark.read.format("delta")
+            .load(f"{BRONZE_BASE}/customers")
+            .filter(col("_ingest_date") == run_date)
+        )
 
-        bronze_policies  = (spark.read.format("delta")
-                            .load(f"{BRONZE_BASE}/policies")
-                            .filter(col("_ingest_date") == run_date))
+        bronze_policies = (
+            spark.read.format("delta")
+            .load(f"{BRONZE_BASE}/policies")
+            .filter(col("_ingest_date") == run_date)
+        )
 
-        bronze_claims    = (spark.read.format("delta")
-                            .load(f"{BRONZE_BASE}/claims")
-                            .filter(col("_ingest_date") == run_date))
+        bronze_claims = (
+            spark.read.format("delta")
+            .load(f"{BRONZE_BASE}/claims")
+            .filter(col("_ingest_date") == run_date)
+        )
 
         # ── Clean ───────────────────────────────────────────────────────────
         clean_customers = _clean_customers(bronze_customers)
-        clean_policies  = _clean_policies(bronze_policies)
-        clean_claims    = _clean_claims(bronze_claims)
+        clean_policies = _clean_policies(bronze_policies)
+        clean_claims = _clean_claims(bronze_claims)
 
         # ── Write to Silver ─────────────────────────────────────────────────
-        _upsert_silver(spark, clean_customers,
-                       f"{SILVER_BASE}/customers", "customer_id")
+        _upsert_silver(spark, clean_customers, f"{SILVER_BASE}/customers", "customer_id")
 
-        _apply_scd2_policies(spark, clean_policies,
-                             f"{SILVER_BASE}/policies_scd2")
+        _apply_scd2_policies(spark, clean_policies, f"{SILVER_BASE}/policies_scd2")
 
-        _upsert_silver(spark, clean_claims,
-                       f"{SILVER_BASE}/claims", "claim_id")
+        _upsert_silver(spark, clean_claims, f"{SILVER_BASE}/claims", "claim_id")
 
         counts = {
             "customers": clean_customers.count(),
-            "policies":  clean_policies.count(),
-            "claims":    clean_claims.count(),
+            "policies": clean_policies.count(),
+            "claims": clean_claims.count(),
         }
         logger.info(f"=== silver_transform complete: {counts} ===")
         return counts
@@ -231,8 +248,9 @@ def run_silver(ingest_date: str | None = None) -> dict:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(message)s")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date", default=date.today().isoformat(),
-                        help="Ingest date YYYY-MM-DD (default: today)")
+    parser.add_argument(
+        "--date", default=date.today().isoformat(), help="Ingest date YYYY-MM-DD (default: today)"
+    )
     args = parser.parse_args()
     result = run_silver(args.date)
     print(result)

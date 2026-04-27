@@ -2,9 +2,9 @@
 Unit tests for the synthetic data generator.
 No MinIO connection required — upload calls are mocked.
 """
+
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -23,20 +23,41 @@ from data_generator.generate import (
 # ── Expected schemas ────────────────────────────────────────────────────────────
 
 _CUSTOMER_COLS = {
-    "customer_id", "first_name", "last_name", "dob",
-    "province", "postal_code", "email", "phone", "created_at",
+    "customer_id",
+    "first_name",
+    "last_name",
+    "dob",
+    "province",
+    "postal_code",
+    "email",
+    "phone",
+    "created_at",
 }
 _POLICY_COLS = {
-    "policy_id", "customer_id", "product_type", "coverage_amount",
-    "premium", "start_date", "end_date", "status",
+    "policy_id",
+    "customer_id",
+    "product_type",
+    "coverage_amount",
+    "premium",
+    "start_date",
+    "end_date",
+    "status",
 }
 _CLAIM_COLS = {
-    "claim_id", "policy_id", "claim_date", "loss_date",
-    "claim_amount", "claim_status", "claim_type", "adjuster_id", "fraud_flag",
+    "claim_id",
+    "policy_id",
+    "claim_date",
+    "loss_date",
+    "claim_amount",
+    "claim_status",
+    "claim_type",
+    "adjuster_id",
+    "fraud_flag",
 }
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture(scope="module")
 def customers(sample_size):
@@ -54,6 +75,7 @@ def claims(policies):
 
 
 # ── Customer tests ──────────────────────────────────────────────────────────────
+
 
 class TestCustomers:
     def test_row_count(self, customers, sample_size):
@@ -81,6 +103,7 @@ class TestCustomers:
 
 
 # ── Policy tests ────────────────────────────────────────────────────────────────
+
 
 class TestPolicies:
     def test_row_count(self, policies, customers):
@@ -111,6 +134,7 @@ class TestPolicies:
 
 
 # ── Claim tests ─────────────────────────────────────────────────────────────────
+
 
 class TestClaims:
     def test_row_count(self, claims, policies):
@@ -145,6 +169,7 @@ class TestClaims:
 
 
 # ── Dirty data injection tests ──────────────────────────────────────────────────
+
 
 class TestDirtyData:
     def test_duplicates_added_customers(self, sample_size):
@@ -192,6 +217,7 @@ class TestDirtyData:
 
 
 # ── Upload tests (MinIO mocked) ─────────────────────────────────────────────────
+
 
 class TestUpload:
     @patch("data_generator.generate._get_s3_client")

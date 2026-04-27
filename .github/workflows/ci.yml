@@ -7,15 +7,16 @@ on:
     branches: [main]
 
 jobs:
+  # ── 1. Lint + unit tests ───────────────────────────────────────────────────
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
 
       - name: Install dev dependencies
@@ -30,23 +31,35 @@ jobs:
       - name: Run pytest
         run: pytest tests/ -v --tb=short
 
+  # ── 2. dbt parse (syntax + model graph validation) ────────────────────────
   dbt-parse:
     runs-on: ubuntu-latest
+    env:
+      # dbt parse validates SQL/Jinja syntax — no live DB connection needed.
+      # Real values injected from GitHub Secrets on main-branch deploys.
+      SNOWFLAKE_ACCOUNT:   ${{ secrets.SNOWFLAKE_ACCOUNT  || 'ci-placeholder.ca-central-1.aws' }}
+      SNOWFLAKE_USER:      ${{ secrets.SNOWFLAKE_USER     || 'CI_USER' }}
+      SNOWFLAKE_PASSWORD:  ${{ secrets.SNOWFLAKE_PASSWORD || 'ci-placeholder' }}
+      SNOWFLAKE_ROLE:      TRANSFORMER
+      SNOWFLAKE_WAREHOUSE: COMPUTE_WH
+      SNOWFLAKE_DATABASE:  INSURANCE_DW
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
+          cache: "pip"
 
-      - name: Install dbt
-        run: pip install dbt-core==1.8.5 dbt-duckdb==1.8.1
+      - name: Install dbt-snowflake
+        run: pip install "dbt-snowflake==1.8.3"
 
-      - name: dbt parse (syntax check)
+      - name: dbt parse (validates SQL + model graph, no DB connection)
         working-directory: dbt
         run: dbt parse --profiles-dir . --target dev
 
+  # ── 3. Terraform validate ──────────────────────────────────────────────────
   terraform-validate:
     runs-on: ubuntu-latest
     steps:
@@ -57,10 +70,19 @@ jobs:
         with:
           terraform_version: "1.7.5"
 
-      - name: Terraform init
+      - name: Terraform init (no backend)
         working-directory: terraform
         run: terraform init -backend=false
 
       - name: Terraform validate
         working-directory: terraform
         run: terraform validate
+
+  # ── 4. Docker Compose config check ────────────────────────────────────────
+  docker-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate docker-compose syntax
+        run: docker compose config --quiet

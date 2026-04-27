@@ -11,12 +11,13 @@ Usage:
   Called by Airflow PythonOperator:  run_bronze(ingest_date="2024-01-15")
   Standalone:                        python spark_jobs/bronze_ingest.py [--date YYYY-MM-DD]
 """
+
 import argparse
 import logging
 import sys
 from datetime import date
 
-from pyspark.sql.functions import input_file_name, lit, to_date
+from pyspark.sql.functions import input_file_name, lit
 from pyspark.sql.types import DateType
 
 sys.path.insert(0, "/opt/airflow")
@@ -37,34 +38,31 @@ def _ingest_entity(spark, entity: str, fmt: str, schema, ingest_date: str) -> in
     Read one entity from raw zone, attach metadata, write to Bronze Delta table.
     Returns the row count written.
     """
-    raw_path    = f"{RAW_BASE}/{entity}/dt={ingest_date}/{entity}.{fmt}"
+    raw_path = f"{RAW_BASE}/{entity}/dt={ingest_date}/{entity}.{fmt}"
     bronze_path = f"{BRONZE_BASE}/{entity}"
 
     logger.info(f"[bronze] reading {raw_path}")
 
     if fmt == "csv":
-        raw_df = (spark.read
-                  .option("header", "true")
-                  .option("nullValue", "")
-                  .schema(schema)
-                  .csv(raw_path))
+        raw_df = (
+            spark.read.option("header", "true").option("nullValue", "").schema(schema).csv(raw_path)
+        )
     else:
-        raw_df = (spark.read
-                  .schema(schema)
-                  .json(raw_path))
+        raw_df = spark.read.schema(schema).json(raw_path)
 
-    bronze_df = (raw_df
-                 .withColumn("_ingest_date",  lit(ingest_date).cast(DateType()))
-                 .withColumn("_source_file",  input_file_name()))
+    bronze_df = raw_df.withColumn("_ingest_date", lit(ingest_date).cast(DateType())).withColumn(
+        "_source_file", input_file_name()
+    )
 
     row_count = bronze_df.count()
 
-    (bronze_df.write
-     .format("delta")
-     .mode("overwrite")
-     .option("replaceWhere", f"_ingest_date = '{ingest_date}'")
-     .partitionBy("_ingest_date")
-     .save(bronze_path))
+    (
+        bronze_df.write.format("delta")
+        .mode("overwrite")
+        .option("replaceWhere", f"_ingest_date = '{ingest_date}'")
+        .partitionBy("_ingest_date")
+        .save(bronze_path)
+    )
 
     logger.info(f"[bronze] wrote {row_count:,} rows → {bronze_path}")
     return row_count
@@ -83,15 +81,9 @@ def run_bronze(ingest_date: str | None = None) -> dict:
 
     try:
         counts = {
-            "customers": _ingest_entity(
-                spark, "customers", "csv", RAW_CUSTOMERS_SCHEMA, run_date
-            ),
-            "policies": _ingest_entity(
-                spark, "policies", "csv", RAW_POLICIES_SCHEMA, run_date
-            ),
-            "claims": _ingest_entity(
-                spark, "claims", "json", RAW_CLAIMS_SCHEMA, run_date
-            ),
+            "customers": _ingest_entity(spark, "customers", "csv", RAW_CUSTOMERS_SCHEMA, run_date),
+            "policies": _ingest_entity(spark, "policies", "csv", RAW_POLICIES_SCHEMA, run_date),
+            "claims": _ingest_entity(spark, "claims", "json", RAW_CLAIMS_SCHEMA, run_date),
         }
         logger.info(f"=== bronze_ingest complete: {counts} ===")
         return counts
@@ -102,8 +94,9 @@ def run_bronze(ingest_date: str | None = None) -> dict:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(message)s")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date", default=date.today().isoformat(),
-                        help="Ingest date YYYY-MM-DD (default: today)")
+    parser.add_argument(
+        "--date", default=date.today().isoformat(), help="Ingest date YYYY-MM-DD (default: today)"
+    )
     args = parser.parse_args()
     result = run_bronze(args.date)
     print(result)

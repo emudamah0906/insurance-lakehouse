@@ -9,6 +9,7 @@ Usage:
   python data_generator/generate.py              # full 500K run
   python data_generator/generate.py --sample     # 1K/2K/5K for quick local tests
 """
+
 import argparse
 import io
 import json
@@ -16,7 +17,6 @@ import logging
 import os
 import random
 from datetime import date
-from typing import Optional
 
 import boto3
 import numpy as np
@@ -34,7 +34,9 @@ random.seed(42)
 # ── Runtime config ─────────────────────────────────────────────────────────────
 # AWS_ENDPOINT_URL is set in docker-compose for Airflow containers.
 # MINIO_ENDPOINT is used when running locally (make seed).
-MINIO_ENDPOINT = os.getenv("AWS_ENDPOINT_URL") or os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+MINIO_ENDPOINT = os.getenv("AWS_ENDPOINT_URL") or os.getenv(
+    "MINIO_ENDPOINT", "http://localhost:9000"
+)
 MINIO_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin123")
 RAW_BUCKET = "raw"
@@ -109,13 +111,14 @@ DIRTY_RATE = 0.05  # ~5% dirty rows per entity
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
 
+
 def _postal_code(province: str) -> str:
     """Return a valid-format Canadian postal code for the given province."""
     prefix = random.choice(_POSTAL_PREFIX.get(province, ["X"]))
-    d, l = _PC_DIGITS, _PC_LETTERS
+    d, letters = _PC_DIGITS, _PC_LETTERS
     return (
-        f"{prefix}{random.choice(d)}{random.choice(l)}"
-        f" {random.choice(d)}{random.choice(l)}{random.choice(d)}"
+        f"{prefix}{random.choice(d)}{random.choice(letters)}"
+        f" {random.choice(d)}{random.choice(letters)}{random.choice(d)}"
     )
 
 
@@ -139,6 +142,7 @@ def _get_s3_client():
 
 
 # ── Generators ─────────────────────────────────────────────────────────────────
+
 
 def generate_customers(n: int = 50_000) -> pd.DataFrame:
     """Generate n synthetic Canadian insurance customers."""
@@ -174,10 +178,12 @@ def generate_policies(customer_ids: list, n: int = 100_000) -> pd.DataFrame:
     )
 
     # Coverage band by product type: auto 20K–100K, home 200K–1.5M, life 100K–2M
-    _coverage_range = {"auto": (20_000, 100_000), "home": (200_000, 1_500_000), "life": (100_000, 2_000_000)}
-    coverage = np.array(
-        [round(np.random.uniform(*_coverage_range[pt]), 2) for pt in product_types]
-    )
+    _coverage_range = {
+        "auto": (20_000, 100_000),
+        "home": (200_000, 1_500_000),
+        "life": (100_000, 2_000_000),
+    }
+    coverage = np.array([round(np.random.uniform(*_coverage_range[pt]), 2) for pt in product_types])
     premiums = np.round(coverage * np.random.uniform(0.005, 0.025, size=n), 2)
 
     return pd.DataFrame(
@@ -226,6 +232,7 @@ def generate_claims(policy_ids: list, n: int = 500_000) -> pd.DataFrame:
 
 # ── Dirty data injection ───────────────────────────────────────────────────────
 
+
 def inject_dirty_data(df: pd.DataFrame, entity: str) -> pd.DataFrame:
     """
     Inject ~5% dirty rows so the DQ layer (Phase 4) has real failures to catch.
@@ -272,9 +279,7 @@ def inject_dirty_data(df: pd.DataFrame, entity: str) -> pd.DataFrame:
 
     elif entity == "claims":
         for idx in inv_idx[:half]:
-            dirty.at[idx, "claim_amount"] = round(
-                -abs(float(dirty.at[idx, "claim_amount"])), 2
-            )
+            dirty.at[idx, "claim_amount"] = round(-abs(float(dirty.at[idx, "claim_amount"])), 2)
         for idx in inv_idx[half:]:
             dirty.at[idx, "loss_date"] = "2099-12-31"  # loss_date after claim_date (impossible)
 
@@ -285,6 +290,7 @@ def inject_dirty_data(df: pd.DataFrame, entity: str) -> pd.DataFrame:
 
 
 # ── MinIO upload ───────────────────────────────────────────────────────────────
+
 
 def upload_to_minio(df: pd.DataFrame, entity: str, fmt: str, ingest_date: str) -> str:
     """
@@ -313,11 +319,12 @@ def upload_to_minio(df: pd.DataFrame, entity: str, fmt: str, ingest_date: str) -
 
 # ── Orchestration entry point ──────────────────────────────────────────────────
 
+
 def generate_and_land(
     n_customers: int = 50_000,
     n_policies: int = 100_000,
     n_claims: int = 500_000,
-    ingest_date: Optional[str] = None,
+    ingest_date: str | None = None,
 ) -> dict:
     """
     Full pipeline: generate → inject dirty data → upload to MinIO raw zone.

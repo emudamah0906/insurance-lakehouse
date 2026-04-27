@@ -10,6 +10,7 @@ Features:
   - Slack failure alert (configure SLACK_WEBHOOK_URL env var to activate)
   - Idempotent: safe to re-run for the same date
 """
+
 import sys
 from datetime import datetime, timedelta
 
@@ -17,40 +18,42 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 
 sys.path.insert(0, "/opt/airflow")
-from spark_jobs.bronze_ingest import run_bronze         # noqa: E402
-from spark_jobs.dq_check import run_dq                  # noqa: E402
-from spark_jobs.silver_transform import run_silver      # noqa: E402
+from spark_jobs.bronze_ingest import run_bronze  # noqa: E402
+from spark_jobs.dq_check import run_dq  # noqa: E402
+from spark_jobs.silver_transform import run_silver  # noqa: E402
 from spark_jobs.snowflake_load import run_snowflake_load  # noqa: E402
-
 
 # ── Slack failure callback (no-ops gracefully if webhook not configured) ───────
 
+
 def _slack_failure(context):
     """Post a failure message to Slack when any task fails."""
+    import json
     import os
-    import urllib.request, json
+    import urllib.request
 
     webhook = os.getenv("SLACK_WEBHOOK_URL", "")
     if not webhook:
         return  # Slack not configured — skip silently
 
-    task_id  = context["task_instance"].task_id
-    dag_id   = context["dag"].dag_id
-    exec_dt  = context["execution_date"]
-    log_url  = context["task_instance"].log_url
+    task_id = context["task_instance"].task_id
+    dag_id = context["dag"].dag_id
+    exec_dt = context["execution_date"]
+    log_url = context["task_instance"].log_url
 
-    payload = json.dumps({
-        "text": (
-            f":red_circle: *{dag_id}* › `{task_id}` failed\n"
-            f"Execution date: {exec_dt}\n"
-            f"<{log_url}|View logs>"
-        )
-    }).encode()
+    payload = json.dumps(
+        {
+            "text": (
+                f":red_circle: *{dag_id}* › `{task_id}` failed\n"
+                f"Execution date: {exec_dt}\n"
+                f"<{log_url}|View logs>"
+            )
+        }
+    ).encode()
 
     try:
         req = urllib.request.Request(
-            webhook, data=payload,
-            headers={"Content-Type": "application/json"}
+            webhook, data=payload, headers={"Content-Type": "application/json"}
         )
         urllib.request.urlopen(req, timeout=5)
     except Exception:
@@ -59,12 +62,15 @@ def _slack_failure(context):
 
 # ── dbt runner ────────────────────────────────────────────────────────────────
 
+
 def _run_dbt():
     """Run dbt run + dbt test inside the Airflow container."""
-    import subprocess, logging
+    import logging
+    import subprocess
+
     dbt_project = "/opt/airflow/dbt"
     for cmd in [
-        ["dbt", "run",  "--profiles-dir", dbt_project, "--project-dir", dbt_project],
+        ["dbt", "run", "--profiles-dir", dbt_project, "--project-dir", dbt_project],
         ["dbt", "test", "--profiles-dir", dbt_project, "--project-dir", dbt_project],
     ]:
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -76,11 +82,11 @@ def _run_dbt():
 # ── DAG definition ─────────────────────────────────────────────────────────────
 
 default_args = {
-    "owner":           "data-engineering",
-    "retries":         2,
-    "retry_delay":     timedelta(minutes=5),
+    "owner": "data-engineering",
+    "retries": 2,
+    "retry_delay": timedelta(minutes=5),
     "email_on_failure": False,
-    "email_on_retry":   False,
+    "email_on_retry": False,
     "on_failure_callback": _slack_failure,
 }
 

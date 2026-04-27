@@ -7,6 +7,7 @@ Output:
   s3://raw/policies/dt={ds}/policies.csv
   s3://raw/claims/dt={ds}/claims.json
 """
+
 import sys
 from datetime import datetime, timedelta
 
