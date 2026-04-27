@@ -65,7 +65,6 @@ great_expectations/expectations/.ge_store_backend_id
 terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.backup
-terraform/.terraform.lock.hcl
 terraform/terraform.tfvars
 
 # Docker
