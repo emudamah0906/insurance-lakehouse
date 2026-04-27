@@ -11,7 +11,7 @@ up:
 	@echo "  Services starting (allow ~60s for Airflow init)"
 	@echo "  MinIO Console : http://localhost:9001   user=minioadmin    pass=minioadmin123"
 	@echo "  Airflow UI    : http://localhost:8080   user=admin         pass=admin"
-	@echo "  Metabase      : http://localhost:3000   user=memudapuram@gmail.com"
+	@echo "  Metabase      : http://localhost:3000   (set on first login)"
 	@echo ""
 
 down:
