@@ -1,8 +1,8 @@
 """
-DAG 02 — Bronze → DQ → Silver layer transformation.
+DAG 02 — Bronze → DQ → Silver → Snowflake → dbt pipeline.
 
 Task graph:
-  bronze_ingest → dq_check → silver_transform
+  bronze_ingest → dq_check → silver_transform → snowflake_load → dbt_run
 
 Features:
   - 2-hour SLA on the full DAG
@@ -17,9 +17,10 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 
 sys.path.insert(0, "/opt/airflow")
-from spark_jobs.bronze_ingest import run_bronze      # noqa: E402
-from spark_jobs.dq_check import run_dq               # noqa: E402
-from spark_jobs.silver_transform import run_silver   # noqa: E402
+from spark_jobs.bronze_ingest import run_bronze         # noqa: E402
+from spark_jobs.dq_check import run_dq                  # noqa: E402
+from spark_jobs.silver_transform import run_silver      # noqa: E402
+from spark_jobs.snowflake_load import run_snowflake_load  # noqa: E402
 
 
 # ── Slack failure callback (no-ops gracefully if webhook not configured) ───────
@@ -56,6 +57,22 @@ def _slack_failure(context):
         pass  # never let the alert crash the DAG
 
 
+# ── dbt runner ────────────────────────────────────────────────────────────────
+
+def _run_dbt():
+    """Run dbt run + dbt test inside the Airflow container."""
+    import subprocess, logging
+    dbt_project = "/opt/airflow/dbt"
+    for cmd in [
+        ["dbt", "run",  "--profiles-dir", dbt_project, "--project-dir", dbt_project],
+        ["dbt", "test", "--profiles-dir", dbt_project, "--project-dir", dbt_project],
+    ]:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        logging.getLogger(__name__).info(result.stdout[-3000:])
+        if result.returncode != 0:
+            raise RuntimeError(f"dbt command failed: {' '.join(cmd)}\n{result.stderr[-2000:]}")
+
+
 # ── DAG definition ─────────────────────────────────────────────────────────────
 
 default_args = {
@@ -75,7 +92,7 @@ with DAG(
     catchup=False,
     default_args=default_args,
     sla_miss_callback=_slack_failure,
-    tags=["bronze", "silver", "dq", "spark", "phase-4"],
+    tags=["bronze", "silver", "dq", "spark", "snowflake", "dbt", "phase-5"],
     doc_md="""
 ## 02_bronze_silver
 
@@ -99,8 +116,16 @@ clean data to Silver.
 - Customers & Claims: MERGE upsert (keep latest state)
 - Policies: SCD Type 2 — tracks coverage_amount, premium, status changes
 
+### Snowflake Load
+- Reads Silver Delta tables, writes to INSURANCE_DW.STAGING via pandas write_pandas
+- Policies: current-row SCD2 only
+
+### dbt Run
+- Staging views: stg_customers, stg_policies, stg_claims
+- Gold marts: mart_loss_ratio, mart_claims_analysis, mart_customer_ltv, mart_policy_performance
+
 ### SLA
-2 hours from scheduled start time.
+3 hours from scheduled start time.
 """,
 ) as dag:
 
@@ -128,4 +153,19 @@ clean data to Silver.
         sla=timedelta(hours=2),
     )
 
-    bronze_task >> dq_task >> silver_task
+    sf_load_task = PythonOperator(
+        task_id="snowflake_load",
+        python_callable=run_snowflake_load,
+        op_kwargs={"ingest_date": "{{ ds }}"},
+        execution_timeout=timedelta(minutes=30),
+        sla=timedelta(hours=2, minutes=30),
+    )
+
+    dbt_task = PythonOperator(
+        task_id="dbt_run",
+        python_callable=_run_dbt,
+        execution_timeout=timedelta(minutes=30),
+        sla=timedelta(hours=3),
+    )
+
+    bronze_task >> dq_task >> silver_task >> sf_load_task >> dbt_task

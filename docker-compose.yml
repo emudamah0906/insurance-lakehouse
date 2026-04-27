@@ -24,6 +24,13 @@ x-airflow-env: &airflow-env
   # PySpark tuning for local Docker mode
   SPARK_DRIVER_MEMORY: 4g
   PYSPARK_PYTHON: python3
+  # Snowflake — Phase 5 (values injected from .env or CI secrets)
+  SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT:-YQ26829.ca-central-1.aws}
+  SNOWFLAKE_USER: ${SNOWFLAKE_USER:-MAHESHEMUDAPURAM}
+  SNOWFLAKE_PASSWORD: ${SNOWFLAKE_PASSWORD:-}
+  SNOWFLAKE_ROLE: ${SNOWFLAKE_ROLE:-TRANSFORMER}
+  SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE:-INSURANCE_DW}
+  SNOWFLAKE_WAREHOUSE: ${SNOWFLAKE_WAREHOUSE:-COMPUTE_WH}
 
 x-airflow-volumes: &airflow-volumes
   - ./airflow/dags:/opt/airflow/dags
@@ -32,6 +39,7 @@ x-airflow-volumes: &airflow-volumes
   - ./spark_jobs:/opt/airflow/spark_jobs
   - ./data_generator:/opt/airflow/data_generator
   - ./great_expectations:/opt/airflow/great_expectations
+  - ./dbt:/opt/airflow/dbt
 
 services:
 

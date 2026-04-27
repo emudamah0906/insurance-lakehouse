@@ -2,9 +2,17 @@ insurance_lakehouse:
   target: dev
   outputs:
     dev:
-      type: duckdb
-      path: "{{ env_var('DBT_DUCKDB_PATH', '/tmp/insurance_dev.duckdb') }}"
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT', 'YQ26829.ca-central-1.aws') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'TRANSFORMER') }}"
+      database: INSURANCE_DW
+      warehouse: COMPUTE_WH
+      schema: STAGING
       threads: 4
+      client_session_keep_alive: false
+      query_tag: dbt_dev
 
     prod:
       type: snowflake
@@ -17,3 +25,4 @@ insurance_lakehouse:
       schema: MARTS
       threads: 4
       client_session_keep_alive: false
+      query_tag: dbt_prod

@@ -1,0 +1,29 @@
+version: 2
+
+sources:
+  - name: staging
+    database: INSURANCE_DW
+    schema: STAGING
+    description: "Silver-layer data loaded from MinIO Delta tables by the Airflow snowflake_load job."
+    tables:
+      - name: customers
+        description: "SCD Type 2 customer master — full Silver dump (includes dirty rows filtered by staging views)."
+        columns:
+          - name: customer_id
+            tests: [not_null, unique]
+
+      - name: policies
+        description: "Insurance policy master — full Silver dump."
+        columns:
+          - name: policy_id
+            tests: [not_null, unique]
+          - name: product_type
+            tests:
+              - accepted_values:
+                  values: [auto, home, life, health, commercial]
+
+      - name: claims
+        description: "Claims submitted against policies — full Silver dump."
+        columns:
+          - name: claim_id
+            tests: [not_null, unique]

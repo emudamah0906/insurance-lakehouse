@@ -1,0 +1,58 @@
+version: 2
+
+models:
+  - name: mart_loss_ratio
+    description: >
+      Loss ratio (claims / premiums) by product type and province.
+      Primary profitability KPI for actuaries and underwriters.
+    columns:
+      - name: product_type
+        tests: [not_null]
+      - name: province
+        tests: [not_null]
+      - name: loss_ratio
+        description: "Total settled claims / total premiums. >1 means unprofitable."
+      - name: claims_frequency_pct
+        description: "% of policies that had at least one claim."
+      - name: avg_claim_severity
+        description: "Average dollar amount per settled claim."
+
+  - name: mart_claims_analysis
+    description: >
+      Monthly claims KPIs by claim type, product, and province.
+      Feeds the Metabase claims dashboard.
+    columns:
+      - name: claim_month
+        tests: [not_null]
+      - name: claim_count
+        tests: [not_null]
+      - name: fraud_rate_pct
+        description: "% of claims in this segment that were flagged as fraud."
+
+  - name: mart_customer_ltv
+    description: >
+      Customer Lifetime Value — net LTV = lifetime premiums minus lifetime claims.
+      Segments customers into platinum / gold / silver / bronze / unprofitable tiers.
+    columns:
+      - name: customer_id
+        tests: [not_null, unique]
+      - name: net_ltv
+        description: "lifetime_premium - lifetime_claims. Positive = profitable customer."
+      - name: ltv_tier
+        tests:
+          - accepted_values:
+              values: [platinum, gold, silver, bronze, unprofitable]
+
+  - name: mart_policy_performance
+    description: >
+      Policy-level risk and profitability — premium vs claims, fraud flags,
+      and loss ratio per policy. Used for portfolio risk assessment.
+    columns:
+      - name: policy_id
+        tests: [not_null, unique]
+      - name: risk_flag
+        tests:
+          - accepted_values:
+              values: [normal, high_loss, fraud_flagged, over_limit]
+      - name: policy_loss_ratio
+        description: "total_claim_amount / premium for this policy."

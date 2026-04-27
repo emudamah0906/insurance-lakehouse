@@ -19,3 +19,7 @@ boto3==1.34.101
 
 # Data quality (Phase 4)
 great-expectations==0.18.19
+
+# Snowflake + dbt (Phase 5)
+snowflake-connector-python[pandas]==3.10.1
+dbt-snowflake==1.8.3
