@@ -202,26 +202,11 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main`/`develo
 
 ### Adding Snowflake secrets to GitHub Actions
 
-For `dbt-parse` to use real credentials on protected branches:
-
-```
-GitHub repo → Settings → Secrets and variables → Actions → New repository secret:
-  SNOWFLAKE_ACCOUNT   = YQ26829.ca-central-1.aws
-  SNOWFLAKE_USER      = MAHESHEMUDAPURAM
-  SNOWFLAKE_PASSWORD  = <your password>
+For `dbt-parse`use real snowflake credentials
 ```
 
 ---
 
-## Resume Bullets
-
-- Designed and built an end-to-end Insurance Claims Lakehouse (50K customers, 100K policies, 500K claims) on Apache Spark 3.5 + Delta Lake 3.2, with PySpark MERGE upserts and SCD Type 2 policy history tracking
-- Implemented a data quality gate using Great Expectations V3 + PySpark quarantine filters, catching ~19 bad rows per daily run with labeled failure reasons written to a separate Delta quarantine zone
-- Built 4 dbt Gold mart models on Snowflake (loss ratio, claims analysis, customer LTV, policy performance) with 17/17 data tests passing; automated daily refresh via Airflow PythonOperator
-- Containerized the full stack (MinIO, Airflow, Snowflake connector, dbt, Great Expectations, Metabase) using Docker Compose with a custom Airflow image pre-baking Delta Lake + S3A JARs for zero-download pipeline runs
-- Set up GitHub Actions CI pipeline (lint, pytest, dbt parse, terraform validate, docker-compose config check); Snowflake infrastructure as code with Terraform provider v0.90
-
----
 
 ## What I'd Do Next (with a real budget)
 
