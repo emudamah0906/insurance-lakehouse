@@ -83,7 +83,7 @@ Pipeline:  bronze_ingest → dq_check → silver_transform → snowflake_load �
 |---|---|---|
 | Airflow UI | http://localhost:8080 | admin / admin |
 | MinIO Console | http://localhost:9001 | minioadmin / minioadmin123 |
-| Metabase | http://localhost:3000 | set on first login (see setup script) |
+| Metabase | http://localhost:3000 ||
 
 ---
 
