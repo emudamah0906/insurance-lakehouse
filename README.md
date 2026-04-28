@@ -200,18 +200,3 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main`/`develo
 | `terraform-validate` | `terraform init -backend=false && terraform validate` |
 | `docker-config` | `docker compose config --quiet` (YAML syntax check) |
 
-### Adding Snowflake secrets to GitHub Actions
-
-For `dbt-parse`use real snowflake credentials
-```
-
----
-
-
-## What I'd Do Next (with a real budget)
-
-- Replace MinIO with AWS S3 + EMR Serverless for production-scale Spark
-- Add Apache Kafka for real-time claims streaming → Bronze append
-- Deploy Airflow on MWAA (managed) + dbt Cloud for scheduled runs
-- Add column-level lineage with OpenLineage / Marquez
-- Add Snowflake Dynamic Tables to replace dbt `table` materializations
